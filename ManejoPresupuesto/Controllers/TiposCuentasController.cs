@@ -1,22 +1,27 @@
-﻿using Dapper;
-using ManejoPresupuesto.Models;
+﻿using ManejoPresupuesto.Models;
 using ManejoPresupuesto.Servicios;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Reflection.Metadata.Ecma335;
 
 namespace ManejoPresupuesto.Controllers
 {
     public class TiposCuentasController : Controller
     {
         private readonly IRepositorioTiposCuentas repositorioTiposCuentas;
+        private readonly IServicioUsuarios servicioUsuarios;
 
 
-        public TiposCuentasController(IRepositorioTiposCuentas repositorioTiposCuentas)
+        public TiposCuentasController(IRepositorioTiposCuentas repositorioTiposCuentas, IServicioUsuarios servicioUsuarios)
         {
             this.repositorioTiposCuentas = repositorioTiposCuentas;
+            this.servicioUsuarios = servicioUsuarios;
         }
 
+        public async Task<IActionResult> Index()
+        {
+            var usuarioId = servicioUsuarios.ObtenerUsuarioId();
+            var tiposCuentas = await repositorioTiposCuentas.Obtener(usuarioId);
+            return View(tiposCuentas);
+        }
 
         public IActionResult Crear()
         {
@@ -24,16 +29,53 @@ namespace ManejoPresupuesto.Controllers
         }
 
         [HttpPost]
-        public IActionResult Crear(TipoCuenta tipoCuenta)
+        public async Task<IActionResult> Crear(TipoCuenta tipoCuenta)
         {
             if (!ModelState.IsValid)
             {
                 return View(tipoCuenta);
             }
-            tipoCuenta.UsuarioId = 1;
-            repositorioTiposCuentas.Crear(tipoCuenta);
+            tipoCuenta.UsuarioId = servicioUsuarios.ObtenerUsuarioId();
 
-            return View();
+            var yaExisteTipoCuenta =
+                await repositorioTiposCuentas.Existe(tipoCuenta.Nombre, tipoCuenta.UsuarioId);
+
+            if (yaExisteTipoCuenta)
+            {
+                ModelState.AddModelError(nameof(tipoCuenta.Nombre),
+                    $"Ya existe un tipo de cuenta con el nombre {tipoCuenta.Nombre}");
+                return View(tipoCuenta);
+            }
+            await repositorioTiposCuentas.Crear(tipoCuenta);
+
+            return RedirectToAction("Index");
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Editar(int id)
+        {
+            var usuarioId = servicioUsuarios.ObtenerUsuarioId();
+            var tipoCuenta = await repositorioTiposCuentas.ObtenerPorId(id, usuarioId);
+
+            if (tipoCuenta is null)
+            {
+                return RedirectToAction("NoEncontrado", "Home");
+            }
+            return View(tipoCuenta);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Editar(TipoCuenta tipoCuenta)
+        {
+            var usuarioId = servicioUsuarios.ObtenerUsuarioId();
+            var tipoCuentaExiste = await repositorioTiposCuentas.ObtenerPorId(tipoCuenta.Id, usuarioId);
+
+            if (tipoCuenta is null)
+            {
+                return RedirectToAction("NoEncontrado", "Home");
+            }
+            await repositorioTiposCuentas.Actualizar(tipoCuenta);
+            return RedirectToAction("Index");
         }
     }
 }
